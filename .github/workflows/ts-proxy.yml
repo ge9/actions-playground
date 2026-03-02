@@ -1,0 +1,95 @@
+name: ts-proxy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-pc:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ge9/ts-proxy
+          ref: fix-make-cgo
+      - name: add Go path (https://github.com/actions/runner-images/issues/13675)
+        if: runner.os == 'macOS'
+        run: env | grep GOROOT_  | sort | tail -1 | sed 's/.*=//;s|$|/bin|' >> $GITHUB_PATH
+      - uses: ge9/actions-playground/.github/actions/ts-proxy-patch@main
+      - name: Build
+        shell: bash
+        run: |
+          make
+      - name: Archive (tar.gz)
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            pwsh -Command Compress-Archive -Path ts-proxy.exe -DestinationPath ts-proxy-${{ github.ref_name }}-windows.zip
+          else
+            tar -cvzf ts-proxy-${{ github.ref_name }}-${{ matrix.os }}.tar.gz ts-proxy
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}
+          path: |
+            *.tar.gz
+            *.zip
+  build-termux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ge9/ts-proxy
+          ref: fix-make-cgo
+      - uses: ge9/actions-playground/.github/actions/ts-proxy-patch@main
+
+      - uses: ge9/actions-playground/.github/actions/tailscale@main
+        with: 
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Build in Termux Container
+        run: |
+          chmod -R 777 ..
+          docker run --rm \
+            --platform linux/arm64 \
+            --privileged \
+            -v $PWD/..:/workspace \
+            -w /workspace/$(basename $PWD) \
+            termux/termux-docker:aarch64 \
+            /entrypoint.sh sh -c "
+              pkg update && pkg upgrade -y -o Dpkg::Options::=--force-confdef && pkg install -y golang make
+              make
+            "
+      - name: Archive (tar.gz)
+        run: tar -cvzf ts-proxy-${{ github.ref_name }}-aa64termux.tar.gz ts-proxy
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-termux
+          path: "*.tar.gz"
+  release:
+      needs: [build-pc, build-termux]
+      runs-on: ubuntu-latest
+      permissions:
+        contents: write
+      steps:
+        - name: Download all artifacts
+          uses: actions/download-artifact@v4
+          with:
+            path: ./artifacts
+            pattern: binary-*
+            merge-multiple: true
+
+        - name: Create Release
+          uses: softprops/action-gh-release@v2
+          with:
+            files: ./artifacts/*
+            tag_name: test

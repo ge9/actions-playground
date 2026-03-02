@@ -1,0 +1,23 @@
+name: "ts-proxy patch"
+
+runs:
+  using: "composite"
+  steps:
+    - name: patch tailscale \#18829
+      shell: bash
+      run: |
+        MYDIR=$(basename $PWD)
+        GOVERSION=$(go env GOVERSION | sed 's/^go//')
+        cd ..
+        cat > go.work <<EOF
+        go $GOVERSION
+        use (
+                ./tailscale
+                ./$MYDIR
+        )
+        EOF
+        git clone --depth 1 --single-branch -b $(grep tailscale.com $MYDIR/go.mod  | cut -d " " -f 2) https://github.com/tailscale/tailscale
+        cd tailscale
+        git fetch --depth=2 --no-tags origin pull/18834/head:pr-18834
+        git cherry-pick pr-18834 || true
+        cd ../$MYDIR

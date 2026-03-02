@@ -1,4 +1,4 @@
-name: Manual release
+name: Matrix Test
 
 on:
   workflow_dispatch:
@@ -13,31 +13,22 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - name: Tailscale env
-        id: tailenv
+      - uses: ge9/actions-playground/.github/actions/tailscale@main
+        with: 
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+      - name: test
         shell: bash
         run: |
-          TS_ID=$(echo ${{ secrets.TS_OAUTH_CLIENT_SECRET }} | cut -d '-' -f 3)
-          echo ::add-mask::$TS_ID
-          echo "TS_ID=$TS_ID" >> "$GITHUB_OUTPUT"
-          echo TS_SSH=$(curl https://github.com/${{github.actor}}.keys) >> "$GITHUB_OUTPUT"
-          echo TS_HOST=gha-ssh-${{ runner.os }}-$(openssl rand -hex 6) >> "$GITHUB_OUTPUT"
-      - name: Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ steps.tailenv.outputs.TS_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
-          hostname: ${{ steps.tailenv.outputs.TS_HOST }}
-          tags: tag:weak
-      - name: Tailscale SSH set pubkey
-        uses: ge9/actions/ssh-pubkey@main
-        with:
-          ssh_public_key: ${{ steps.tailenv.outputs.TS_SSH }}
-      - name: Tailscale SSH info
-        uses: ge9/actions/timeout@main
-        with:
-          check-cmd: ${{ runner.os == 'Windows' && 'tasklist /FI "IMAGENAME eq sshd.exe" /V | findstr /I runneradmin'
-                      || 'pgrep sshd -u runner' }}
-          info-cmd: "echo ssh ${{ steps.tailenv.outputs.TS_HOST }}"
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+          which go || true
+      - name: gha-shell
+        shell: bash
+        run: |
+          PWD_BAK="$PWD"
+          cd ~
+          export -p | sed 's/^\(declare -x \([^=]*\)=.*\)$/if [ -z "$\2" ]; then\necho set \2 \n\1\nfi/' > gha-shell
+          echo cd "$PWD_BAK" >> gha-shell
+          echo exec ${{ runner.os == 'Windows' && 'cmd' || '\$SHELL -l' }} >> gha-shell
+          chmod +x gha-shell
+      - name: gha-shell.bat
+        if: runner.os == 'Windows'
+        run: echo "bash %USERPROFILE%\gha-shell" > $env:USERPROFILE\gha-shell.bat

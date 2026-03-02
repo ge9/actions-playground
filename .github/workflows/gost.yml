@@ -1,4 +1,4 @@
-name: Linux
+name: gost
 
 on:
   workflow_dispatch:
@@ -10,6 +10,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          repository: go-gost/gost
+          ref: master
       - name: Tailscale env
         id: tailenv
         shell: bash
@@ -38,3 +43,16 @@ jobs:
           info-cmd: "echo ssh ${{ steps.tailenv.outputs.TS_HOST }}"
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+      - name: Build in Termux Container
+        run: |
+          chmod -R 777 $PWD
+          docker run --rm \
+            --platform linux/arm64 \
+            --privileged \
+            -v $PWD:/workspace \
+            -w /workspace \
+            termux/termux-docker:aarch64 \
+            /entrypoint.sh sh -c "
+              pkg update && pkg install -y golang
+              CGO_ENABLED=0 go build -ldflags='-s -w' -o gost ./cmd/gost
+            "
