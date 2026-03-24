@@ -17,11 +17,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ge9/ts-proxy
-          ref: fix-make-cgo
+          ref: main
       - name: add Go path (https://github.com/actions/runner-images/issues/13675)
         if: runner.os == 'macOS'
         run: env | grep GOROOT_  | sort | tail -1 | sed 's/.*=//;s|$|/bin|' >> $GITHUB_PATH
-      - uses: ge9/actions-playground/.github/actions/ts-proxy-patch@main
       - name: Build
         shell: bash
         run: |
@@ -40,6 +39,26 @@ jobs:
           path: |
             *.tar.gz
             *.zip
+  build-freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ge9/ts-proxy
+          ref: main
+      - name: Build for FreeBSD
+        run: |
+          export GOOS=freebsd
+          export GOARCH=amd64
+          make
+      - name: Archive (tar.gz)
+        run: tar -cvzf ts-proxy-${{ github.ref_name }}-freebsd.tar.gz ts-proxy
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-freebsd
+          path: |
+            *.tar.gz
   build-termux:
     runs-on: ubuntu-latest
     steps:
@@ -47,9 +66,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ge9/ts-proxy
-          ref: fix-make-cgo
-      - uses: ge9/actions-playground/.github/actions/ts-proxy-patch@main
-
+          ref: main
       - uses: ge9/actions-playground/.github/actions/tailscale@main
         with: 
           oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
